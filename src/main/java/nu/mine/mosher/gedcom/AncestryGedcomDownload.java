@@ -15,9 +15,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.protocol.HttpClientContext;
-import org.apache.hc.core5.http.ClassicHttpRequest;
-import org.apache.hc.core5.http.HttpEntity;
-import org.apache.hc.core5.http.NameValuePair;
+import org.apache.hc.core5.http.*;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.message.BasicNameValuePair;
 
@@ -53,6 +51,7 @@ public class AncestryGedcomDownload {
 
     private void run() throws IOException, InterruptedException {
         logIn(getCredentials());
+        System.err.println("Successfully logged in to Ancestry.com.");
 
         final TreesInfo.TreeInfo treeInfo = getTreeList();
         System.err.println("Found Ancestry.com tree " + treeInfo.name + ", with ID " + treeInfo.id + " (for account with ID " + treeInfo.ownerUserId + ")");
@@ -77,13 +76,8 @@ public class AncestryGedcomDownload {
     private void downloadGedcom(final String surlDownload) throws IOException {
         final HttpGet httpGet = new HttpGet(surlDownload);
         try (final CloseableHttpResponse response = http.execute(httpGet, context)) {
-            final int st = response.getCode() / 100;
-            if (st < 3) {
-                final HttpEntity gedcomEntity = response.getEntity();
-                gedcomEntity.writeTo(getOutputStream());
-            } else {
-                throw new IOException("response status code from server: " + response.getCode());
-            }
+            final HttpEntity entity = parseResponse(response);
+            entity.writeTo(getOutputStream());
         }
     }
 
@@ -114,17 +108,12 @@ public class AncestryGedcomDownload {
                 .addParameter("uid", treeInfo.ownerUserId)
                 .build();
         try (final CloseableHttpResponse response = http.execute(httpGet, context)) {
-            final int st = response.getCode() / 100;
-            if (st < 3) {
-                final HttpEntity exportStatus = response.getEntity();
-                progress = getProgress(exportStatus);
-                if (100 <= progress) {
-                    complete = true;
-                }
-                EntityUtils.consume(exportStatus);
-            } else {
-                throw new IOException("response status code from server: " + response.getCode());
+            final HttpEntity entity = parseResponse(response);
+            progress = getProgress(entity);
+            if (100 <= progress) {
+                complete = true;
             }
+            EntityUtils.consume(entity);
         }
         System.err.println("Ancestry.com reported GEDCOM file creation progress of: " + progress + "%...");
         return complete;
@@ -139,41 +128,38 @@ public class AncestryGedcomDownload {
                 .addParameter("uid", treeInfo.ownerUserId)
                 .build();
         try (final CloseableHttpResponse response = http.execute(httpGet, context)) {
-            final int st = response.getCode() / 100;
-            if (st < 3) {
-                final HttpEntity exportInfo = response.getEntity();
-                gid = getGid(exportInfo);
-                EntityUtils.consume(exportInfo);
-            } else {
-                throw new IOException("response status code from server: " + response.getCode());
-            }
+            final HttpEntity entity = parseResponse(response);
+            gid = getGid(entity);
+            EntityUtils.consume(entity);
         }
         return gid;
+    }
+
+    private static HttpEntity parseResponse(final ClassicHttpResponse response) throws IOException {
+        final int st = response.getCode() / 100;
+        if (3 <= st) {
+            throw new IOException("response status code from server: " + response.getCode());
+        }
+        return response.getEntity();
     }
 
     private String getDownloadUrl(final TreesInfo.TreeInfo treeInfo) throws IOException {
         final String templateUrl;
         final HttpGet httpGet = new HttpGet(String.format(FORMAT_URL_SETTINGS_PAGE, treeInfo.id));
         try (final CloseableHttpResponse response = http.execute(httpGet, context)) {
-            final int st = response.getCode() / 100;
-            if (st < 3) {
-                final HttpEntity settingsPage = response.getEntity();
-                try (final BufferedReader readerPage = new BufferedReader(new InputStreamReader(settingsPage.getContent()))) {
-                    templateUrl = readerPage
-                            .lines()
-//                                .peek(x -> System.err.println("PAGE: "+x))
-                            .map(SCRAPE_FOR::matcher)
-                            .filter(Matcher::matches)
-                            .limit(1)
-                            .map(mat -> mat.group(1))
-                            .findFirst()
-                            .orElseThrow();
-                }
-
-                EntityUtils.consume(settingsPage);
-            } else {
-                throw new IOException("response status code from server: " + response.getCode());
+            final HttpEntity entity = parseResponse(response);
+            try (final BufferedReader readerPage = new BufferedReader(new InputStreamReader(entity.getContent()))) {
+                templateUrl = readerPage
+                        .lines()
+                        .map(SCRAPE_FOR::matcher)
+                        .filter(Matcher::matches)
+                        .limit(1)
+                        .map(mat -> mat.group(1))
+                        .findFirst()
+                        .orElseThrow();
             }
+
+            EntityUtils.consume(entity);
         }
         return templateUrl;
     }
@@ -182,19 +168,14 @@ public class AncestryGedcomDownload {
         TreesInfo.TreeInfo treeInfo;
         final HttpGet httpGet = new HttpGet(URL_TREES);
         try (final CloseableHttpResponse response = http.execute(httpGet, context)) {
-            final int st = response.getCode() / 100;
-            if (st < 3) {
-                final HttpEntity entityTrees = response.getEntity();
-                final Map<String, TreesInfo.TreeInfo> mapLowerNameToTree = getTrees(entityTrees);
-                System.err.println("Found " + mapLowerNameToTree.size() + " trees for Ancestry.com account.");
-                treeInfo = mapLowerNameToTree.get(treeName.toLowerCase());
-                if (Objects.isNull(treeInfo)) {
-                    throw new IOException("Cannot find Ancestry.com tree: " + treeName);
-                }
-                EntityUtils.consume(entityTrees);
-            } else {
-                throw new IOException("response status code from server: " + response.getCode());
+            final HttpEntity entity = parseResponse(response);
+            final Map<String, TreesInfo.TreeInfo> mapLowerNameToTree = getTrees(entity);
+            System.err.println("Found " + mapLowerNameToTree.size() + " trees for Ancestry.com account.");
+            treeInfo = mapLowerNameToTree.get(treeName.toLowerCase());
+            if (Objects.isNull(treeInfo)) {
+                throw new IOException("Cannot find Ancestry.com tree: " + treeName);
             }
+            EntityUtils.consume(entity);
         }
         return treeInfo;
     }
@@ -207,14 +188,8 @@ public class AncestryGedcomDownload {
         httpPost.setEntity(new UrlEncodedFormEntity(nvps));
 
         try (final CloseableHttpResponse response = http.execute(httpPost, context)) {
-            final int st = response.getCode() / 100;
-            if (st < 3) {
-                System.err.println("Successfully logged in to Ancestry.com.");
-                final HttpEntity entity = response.getEntity();
-                EntityUtils.consume(entity);
-            } else {
-                throw new IOException("response status code from server: " + response.getCode());
-            }
+            final HttpEntity entity = parseResponse(response);
+            EntityUtils.consume(entity);
         }
     }
 
