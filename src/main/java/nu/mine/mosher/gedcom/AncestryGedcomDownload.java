@@ -137,6 +137,7 @@ public class AncestryGedcomDownload {
 
     private static HttpEntity parseResponse(final ClassicHttpResponse response) throws IOException {
         final int st = response.getCode() / 100;
+        System.err.println("response status code from server: " + response.getCode());
         if (3 <= st) {
             throw new IOException("response status code from server: " + response.getCode());
         }
