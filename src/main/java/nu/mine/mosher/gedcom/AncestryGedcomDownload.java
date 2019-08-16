@@ -187,7 +187,14 @@ public class AncestryGedcomDownload {
                 new BasicNameValuePair("username", credendials.username),
                 new BasicNameValuePair("password", credendials.password));
         httpPost.setEntity(new UrlEncodedFormEntity(nvps));
-
+        httpPost.setHeader("Content-type", "application/json");
+        httpPost.setHeader("Referer","https://www.ancestry.com/account/signin/frame?returnUrl=http://www.ancestry.com/");
+        httpPost.setHeader("dnt", "1");
+        httpPost.setHeader("origin", "https://www.ancestry.com");
+        httpPost.setHeader("pragma", "no-cache");
+        httpPost.setHeader("sec-fetch-mode", "cors");
+        httpPost.setHeader("sec-fetch-site", "same-origin");
+        httpPost.setHeader("x-requested-with", "XMLHttpRequest");
         try (final CloseableHttpResponse response = http.execute(httpPost, context)) {
             final HttpEntity entity = parseResponse(response);
             EntityUtils.consume(entity);
@@ -248,7 +255,7 @@ public class AncestryGedcomDownload {
         }
     }
 
-    private static final String URL_SIGNIN = "https://www.ancestry.com/account/signin";
+    private static final String URL_SIGNIN = "https://www.ancestry.com/account/signin/frame/authenticate";
     private static final String URL_TREES = "https://www.ancestry.com/api/treesui-list/trees?rights=own";
     private static final String URL_EXPORT = "https://www.ancestry.com/family-tree/ExportGedcom.ashx"; // tid, uid
     private static final String URL_STATUS = "https://www.ancestry.com/family-tree/getexportgedcomstatus.ashx"; // gid, uid
