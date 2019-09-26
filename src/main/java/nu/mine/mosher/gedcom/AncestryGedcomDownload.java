@@ -10,7 +10,7 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.classic.methods.RequestBuilder;
 import org.apache.hc.client5.http.cookie.BasicCookieStore;
-import org.apache.hc.client5.http.entity.UrlEncodedFormEntity;
+import org.apache.hc.client5.http.entity.*;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -42,8 +42,8 @@ public class AncestryGedcomDownload {
 
     public static void main(final String... args) throws IOException, InterruptedException {
         if (args.length < 1 || 2 < args.length) {
-            System.err.println("usage: java -jar ancestry-gedcom-download treename [output.ged]");
-            System.err.println("requires ./.ancestry.properties file with username and password.");
+            System.err.println("usage: java -jar ancestry-gedcom-download.jar treename [output.ged]");
+            System.err.println("requires ~/.ancestry.properties file with username and password.");
             return;
         }
         new AncestryGedcomDownload(args[0], 1 < args.length? args[1] : "").run();
@@ -91,7 +91,10 @@ public class AncestryGedcomDownload {
     private void waitForGedcomBuild(final TreesInfo.TreeInfo treeInfo, final String gid) throws InterruptedException, IOException {
         boolean complete = false;
         for (int i = 0; i < 120 && !complete; ++i) {
-            Thread.sleep(409L);
+            if (i == 0) {
+                Thread.sleep(7793L);
+            }
+            Thread.sleep(193);
             complete = checkGedcomBuildProgress(treeInfo, gid, complete);
         }
         if (!complete) {
@@ -183,18 +186,8 @@ public class AncestryGedcomDownload {
 
     private void logIn(final Credentials credendials) throws IOException {
         final HttpPost httpPost = new HttpPost(URL_SIGNIN);
-        final List<NameValuePair> nvps = List.of(
-                new BasicNameValuePair("username", credendials.username),
-                new BasicNameValuePair("password", credendials.password));
-        httpPost.setEntity(new UrlEncodedFormEntity(nvps));
         httpPost.setHeader("Content-type", "application/json");
-        httpPost.setHeader("Referer","https://www.ancestry.com/account/signin/frame?returnUrl=http://www.ancestry.com/");
-        httpPost.setHeader("dnt", "1");
-        httpPost.setHeader("origin", "https://www.ancestry.com");
-        httpPost.setHeader("pragma", "no-cache");
-        httpPost.setHeader("sec-fetch-mode", "cors");
-        httpPost.setHeader("sec-fetch-site", "same-origin");
-        httpPost.setHeader("x-requested-with", "XMLHttpRequest");
+        httpPost.setEntity(EntityBuilder.create().setText(credendials.json()).build());
         try (final CloseableHttpResponse response = http.execute(httpPost, context)) {
             final HttpEntity entity = parseResponse(response);
             EntityUtils.consume(entity);
@@ -290,5 +283,11 @@ public class AncestryGedcomDownload {
     private static class Credentials {
         String username = "";
         String password = "";
+        String json() {
+            return String.format(
+                "{\"username\":\"%s\", \"password\":\"%s\"}",
+                this.username,
+                this.password);
+        }
     }
 }
